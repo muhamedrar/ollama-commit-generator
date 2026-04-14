@@ -298,10 +298,48 @@ async function getDiffText(repoPath) {
 }
 
 function buildCommitPrompt(diffText) {
-  return `You are an assistant that writes a concise Git commit message from a diff. Only return a commit title and, if useful, a short body separated by a blank line. Use imperative present tense and keep it under 100 characters for the title.
+  return `You are a Git commit message assistant. Read the diff and write a clear, specific commit message.
+- Return only a title and, if needed, a short body separated by one blank line.
+- Do not include the word "Commit:" or any labels.
+- Use imperative present tense and keep the title under 72 characters.
+- Avoid vague phrasing such as "update", "fix stuff", "add changes".
+- Mention the key area changed and the main purpose of the change.
 
 Diff:
 ${diffText}`;
+}
+
+async function fillGitCommitInputBox(commitMessage) {
+  try {
+    const gitExtension = vscode.extensions.getExtension('vscode.git');
+    if (!gitExtension) {
+      return false;
+    }
+
+    const gitApi = gitExtension.isActive
+      ? gitExtension.exports
+      : await gitExtension.activate();
+
+    if (!gitApi || typeof gitApi.getAPI !== 'function') {
+      return false;
+    }
+
+    const api = gitApi.getAPI(1);
+    if (!api || !Array.isArray(api.repositories) || api.repositories.length === 0) {
+      return false;
+    }
+
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const repo = api.repositories.find(r => r.rootUri?.fsPath === workspaceRoot) || api.repositories[0];
+    if (repo?.inputBox && typeof repo.inputBox.value === 'string') {
+      repo.inputBox.value = commitMessage.trim();
+      return true;
+    }
+  } catch (error) {
+    // ignore failures, fallback to editor document
+  }
+
+  return false;
 }
 
 async function chooseModel(context) {
@@ -414,7 +452,14 @@ async function generateCommitMessage(context) {
       return;
     }
 
-    const doc = await vscode.workspace.openTextDocument({ content: commitMessage.trim(), language: 'git-commit' });
+    const trimmedMessage = commitMessage.trim();
+    const inserted = await fillGitCommitInputBox(trimmedMessage);
+    if (inserted) {
+      vscode.window.showInformationMessage('Commit message inserted into the Source Control input box.');
+      return;
+    }
+
+    const doc = await vscode.workspace.openTextDocument({ content: trimmedMessage, language: 'git-commit' });
     await vscode.window.showTextDocument(doc, { preview: false });
   } catch (error) {
     vscode.window.showErrorMessage(`Ollama generation failed: ${error.message}`);

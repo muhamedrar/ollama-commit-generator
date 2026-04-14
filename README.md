@@ -6,7 +6,7 @@ An example VS Code extension that adds a Source Control title action for generat
 
 - Adds a button in the SCM title bar for generating commit messages.
 - Adds a second title action to choose the local Ollama model.
-- Uses local `ollama` CLI to list models and generate text.
+- Uses local `ollama` CLI or a configured Ollama HTTP endpoint to list models and generate text.
 
 ## Usage
 
@@ -16,5 +16,7 @@ An example VS Code extension that adds a Source Control title action for generat
 
 ## Requirements
 
-- `ollama` must be installed and available on your PATH.
+- `ollama` must be installed and available on your PATH, or configured via `ollamaCommit.ollamaPath`.
+- If Ollama is running inside a container, set `ollamaCommit.endpoint` to the container's HTTP endpoint (for example `http://localhost:11434`).
+- For authenticated endpoints, set `ollamaCommit.apiKey` or `OLLAMA_API_KEY`.
 - The workspace must be inside a Git repository.

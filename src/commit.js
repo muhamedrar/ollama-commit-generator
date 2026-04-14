@@ -1,13 +1,21 @@
 const vscode = require('vscode');
 
 function buildCommitPrompt(diffText) {
-  return `You are a Git commit message generator.
-- Write a single commit message in imperative tense.
-- The first line must be a short title, no more than 72 characters.
-- If a second paragraph is needed, include only one brief body paragraph separated by a single blank line.
-- Mention the affected file(s) or folder(s), not implementation details.
-- Do not include labels, markdown, explanations, or extra metadata.
-- Do not add anything beyond the commit message itself.
+  return `You are ONLY a commit message generator.
+
+CRITICAL RULE:
+Return ONLY ONE LINE.
+No explanations. No analysis. No extra text. No formatting.
+
+If you output anything else, it is wrong.
+
+Write a Git commit message from the diff.
+
+Format:
+type: short message
+
+DIFF:
+{{diff}}
 
 Diff:
 ${diffText}`;

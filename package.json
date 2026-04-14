@@ -1,6 +1,6 @@
-{
+{ "icon": "images/ollamaIcon.png",
   "name": "ollama-commit-generator",
-  "displayName": "Ollama Commit Generator",
+  "displayName": "LlamaCommit",
   "description": "Add a Source Control button and model picker for local or endpoint-based Ollama commit message generation.",
   "version": "0.0.1",
   "publisher": "local",
@@ -28,8 +28,8 @@
         "title": "Generate Commit Message",
         "category": "Ollama Commit Generator",
         "icon": {
-          "light": "images/lama.svg",
-          "dark": "images/lama.svg"
+          "light": "images/magic-wand.png",
+          "dark": "images/magic-wand-dark.png"
         }
       },
       {

@@ -1,0 +1,61 @@
+{
+  "name": "ollama-commit-generator",
+  "displayName": "Ollama Commit Generator",
+  "description": "Add a Source Control button and model picker for local Ollama commit message generation.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/ollama-commit-generator"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "main": "extension.js",
+  "categories": [
+    "Source Control"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "ollamaCommit.generateCommitMessage",
+        "title": "Generate Commit Message",
+        "category": "Ollama Commit Generator",
+        "icon": {
+          "light": "images/ollama.svg",
+          "dark": "images/ollama.svg"
+        }
+      },
+      {
+        "command": "ollamaCommit.chooseModel",
+        "title": "Choose Ollama Model",
+        "category": "Ollama Commit Generator"
+      }
+    ],
+    "menus": {
+      "scm/resourceState/context": [
+        {
+          "command": "ollamaCommit.generateCommitMessage",
+          "group": "inline"
+        },
+        {
+          "command": "ollamaCommit.chooseModel",
+          "group": "inline"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "ollamaCommit.generateCommitMessage",
+          "group": "navigation"
+        },
+        {
+          "command": "ollamaCommit.chooseModel",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

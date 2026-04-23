@@ -43,7 +43,7 @@
         "category": "LlamaCommit",
         "icon": {
           "light": "images/settings-light.svg",
-          "dark": "images/settings-dark.svg"
+          "dark": "images/settings-dark.png"
         }
       }
     ],

@@ -1,26 +1,56 @@
+const fs = require('fs');
+const path = require('path');
 const vscode = require('vscode');
 
-function buildCommitRequest(diffText) {
-  const systemInstruction = [
-    'You are a Git commit message generator.',
-    'Return exactly one concise commit subject line.',
-    'Do not include quotes, code fences, explanations, bullets, or extra lines.',
-    'Use the format: type: short message.',
-    'Choose the most accurate conventional type from the diff.'
-  ].join(' ');
+const TEMPLATE_PATH = path.join(__dirname, '..', 'templates', 'commit-template.txt');
+const DEFAULT_SYSTEM_TEMPLATE = [
+  'You are a Git commit message generator.',
+  'Return exactly one concise commit subject line.',
+  'Do not include quotes, code fences, explanations, bullets, or extra lines.',
+  'Use the format: type: short message.',
+  'Choose the most accurate conventional type from the diff.'
+].join(' ');
+const DEFAULT_USER_TEMPLATE = ['Write a commit message for this Git diff.', '', 'Diff:', '{{diff}}'].join('\n');
 
-  const userPrompt = [
-    'Write a commit message for this Git diff.',
-    '',
-    'Diff:',
-    diffText
-  ].join('\n');
+function readTemplateFile() {
+  try {
+    return fs.readFileSync(TEMPLATE_PATH, 'utf8');
+  } catch (error) {
+    return '';
+  }
+}
+
+function extractTemplateSection(template, sectionName) {
+  const pattern = new RegExp(`\\[${sectionName}\\]([\\s\\S]*?)\\[\\/${sectionName}\\]`, 'i');
+  const match = template.match(pattern);
+  return match ? match[1].trim() : '';
+}
+
+function loadTemplateSections() {
+  const template = readTemplateFile();
+  const systemInstruction = extractTemplateSection(template, 'SYSTEM') || DEFAULT_SYSTEM_TEMPLATE;
+  const userTemplate = extractTemplateSection(template, 'USER') || DEFAULT_USER_TEMPLATE;
+
+  return {
+    systemInstruction,
+    userTemplate
+  };
+}
+
+function buildCommitRequest(diffText) {
+  const template = loadTemplateSections();
+  const systemInstruction = template.systemInstruction;
+  const userPrompt = template.userTemplate.replace(/\{\{diff\}\}/g, diffText);
 
   return {
     systemInstruction,
     userPrompt,
     combinedPrompt: `${systemInstruction}\n\n${userPrompt}`
   };
+}
+
+function getCommitTemplatePath() {
+  return TEMPLATE_PATH;
 }
 
 function normalizeCommitMessage(commitMessage) {
@@ -118,6 +148,7 @@ async function showCommitDocument(commitMessage) {
 
 module.exports = {
   buildCommitRequest,
+  getCommitTemplatePath,
   normalizeCommitMessage,
   fillGitCommitInputBox,
   showCommitDocument

@@ -6,7 +6,6 @@ const LEGACY_MODEL_STATE_KEY = 'ollamaCommit.selectedModel';
 const PROVIDER_IDS = {
   OLLAMA_CLI: 'ollama-cli',
   OPENAI_COMPATIBLE: 'openai-compatible',
-  OPENAI: 'openai',
   COHERE: 'cohere'
 };
 
@@ -19,10 +18,6 @@ const DEFAULT_STATE = {
     },
     [PROVIDER_IDS.OPENAI_COMPATIBLE]: {
       baseUrl: 'http://localhost:11434/v1',
-      model: ''
-    },
-    [PROVIDER_IDS.OPENAI]: {
-      baseUrl: 'https://api.openai.com/v1',
       model: ''
     },
     [PROVIDER_IDS.COHERE]: {
@@ -65,25 +60,30 @@ function getProviderState(context) {
   const mergedState = cloneDefaultState();
   const legacySettings = getLegacySettings();
   const legacyModel = String(context.globalState.get(LEGACY_MODEL_STATE_KEY) || '').trim();
+  const storedProviders = storedState.providers || {};
+  const legacyOpenAiCompatibleConfig = storedProviders[PROVIDER_IDS.OPENAI_COMPATIBLE] || {};
+  const legacyOpenAiConfig = storedProviders.openai || {};
+  const preferLegacyOpenAi = storedState.activeProviderId === 'openai';
 
-  mergedState.activeProviderId = storedState.activeProviderId || mergedState.activeProviderId;
+  mergedState.activeProviderId =
+    storedState.activeProviderId === 'openai' ? PROVIDER_IDS.OPENAI_COMPATIBLE : storedState.activeProviderId || mergedState.activeProviderId;
   mergedState.providers = {
     ...mergedState.providers,
-    ...(storedState.providers || {})
+    ...storedProviders
   };
 
   mergedState.providers[PROVIDER_IDS.OLLAMA_CLI] = {
     ...DEFAULT_STATE.providers[PROVIDER_IDS.OLLAMA_CLI],
-    ...(storedState.providers || {})[PROVIDER_IDS.OLLAMA_CLI],
+    ...storedProviders[PROVIDER_IDS.OLLAMA_CLI],
     executablePath:
       String(
-        ((storedState.providers || {})[PROVIDER_IDS.OLLAMA_CLI] || {}).executablePath ||
+        (storedProviders[PROVIDER_IDS.OLLAMA_CLI] || {}).executablePath ||
           legacySettings.ollamaPath ||
           ''
       ).trim(),
     model:
       String(
-        ((storedState.providers || {})[PROVIDER_IDS.OLLAMA_CLI] || {}).model ||
+        (storedProviders[PROVIDER_IDS.OLLAMA_CLI] || {}).model ||
           legacyModel ||
           ''
       ).trim()
@@ -91,40 +91,32 @@ function getProviderState(context) {
 
   mergedState.providers[PROVIDER_IDS.OPENAI_COMPATIBLE] = {
     ...DEFAULT_STATE.providers[PROVIDER_IDS.OPENAI_COMPATIBLE],
-    ...(storedState.providers || {})[PROVIDER_IDS.OPENAI_COMPATIBLE],
+    ...legacyOpenAiCompatibleConfig,
     baseUrl: normalizeBaseUrl(
-      ((storedState.providers || {})[PROVIDER_IDS.OPENAI_COMPATIBLE] || {}).baseUrl || legacySettings.endpoint,
+      legacyOpenAiCompatibleConfig.baseUrl ||
+        (preferLegacyOpenAi ? legacyOpenAiConfig.baseUrl : '') ||
+        legacySettings.endpoint ||
+        legacyOpenAiConfig.baseUrl,
       {
         ensureV1: true,
         fallback: DEFAULT_STATE.providers[PROVIDER_IDS.OPENAI_COMPATIBLE].baseUrl
       }
     ),
-    model: String(((storedState.providers || {})[PROVIDER_IDS.OPENAI_COMPATIBLE] || {}).model || '').trim()
-  };
-
-  mergedState.providers[PROVIDER_IDS.OPENAI] = {
-    ...DEFAULT_STATE.providers[PROVIDER_IDS.OPENAI],
-    ...(storedState.providers || {})[PROVIDER_IDS.OPENAI],
-    baseUrl: normalizeBaseUrl(
-      ((storedState.providers || {})[PROVIDER_IDS.OPENAI] || {}).baseUrl,
-      {
-        ensureV1: true,
-        fallback: DEFAULT_STATE.providers[PROVIDER_IDS.OPENAI].baseUrl
-      }
-    ),
-    model: String(((storedState.providers || {})[PROVIDER_IDS.OPENAI] || {}).model || '').trim()
+    model: String(
+      legacyOpenAiCompatibleConfig.model || (preferLegacyOpenAi ? legacyOpenAiConfig.model : '') || legacyOpenAiConfig.model || ''
+    ).trim()
   };
 
   mergedState.providers[PROVIDER_IDS.COHERE] = {
     ...DEFAULT_STATE.providers[PROVIDER_IDS.COHERE],
-    ...(storedState.providers || {})[PROVIDER_IDS.COHERE],
+    ...storedProviders[PROVIDER_IDS.COHERE],
     baseUrl: normalizeBaseUrl(
-      ((storedState.providers || {})[PROVIDER_IDS.COHERE] || {}).baseUrl,
+      (storedProviders[PROVIDER_IDS.COHERE] || {}).baseUrl,
       {
         fallback: DEFAULT_STATE.providers[PROVIDER_IDS.COHERE].baseUrl
       }
     ),
-    model: String(((storedState.providers || {})[PROVIDER_IDS.COHERE] || {}).model || '').trim()
+    model: String((storedProviders[PROVIDER_IDS.COHERE] || {}).model || '').trim()
   };
 
   return mergedState;
@@ -167,11 +159,12 @@ async function getProviderSecret(context, providerId) {
   }
 
   if (providerId === PROVIDER_IDS.OPENAI_COMPATIBLE) {
-    return getLegacySettings().apiKey;
-  }
+    const legacyOpenAiSecret = await context.secrets.get(getSecretStorageKey('openai'));
+    if (legacyOpenAiSecret && legacyOpenAiSecret.trim()) {
+      return legacyOpenAiSecret.trim();
+    }
 
-  if (providerId === PROVIDER_IDS.OPENAI) {
-    return String(process.env.OPENAI_API_KEY || '').trim();
+    return String(process.env.OPENAI_API_KEY || getLegacySettings().apiKey || '').trim();
   }
 
   if (providerId === PROVIDER_IDS.COHERE) {
@@ -187,6 +180,10 @@ async function storeProviderSecret(context, providerId, value) {
 
 async function deleteProviderSecret(context, providerId) {
   await context.secrets.delete(getSecretStorageKey(providerId));
+
+  if (providerId === PROVIDER_IDS.OPENAI_COMPATIBLE) {
+    await context.secrets.delete(getSecretStorageKey('openai'));
+  }
 }
 
 async function hasProviderSecret(context, providerId) {

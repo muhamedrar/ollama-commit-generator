@@ -6,15 +6,9 @@ const providers = [
   ollamaCliProvider,
   createOpenAICompatibleProvider({
     id: 'openai-compatible',
-    label: 'Ollama / OpenAI-Compatible',
-    description: 'Use any OpenAI-compatible endpoint, including Ollama running at /v1.',
+    label: 'OpenAI API',
+    description: 'Use any OpenAI-compatible endpoint by changing the base URL, including OpenAI and Ollama.',
     requiresApiKey: false
-  }),
-  createOpenAICompatibleProvider({
-    id: 'openai',
-    label: 'OpenAI',
-    description: 'Use OpenAI chat models with a stored API key.',
-    requiresApiKey: true
   }),
   cohereProvider
 ];

@@ -3,7 +3,7 @@ node_modules/
 
 # VS Code workspace settings
 .vscode/
-
+.codex
 
 
 # MacOS files

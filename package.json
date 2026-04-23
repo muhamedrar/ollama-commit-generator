@@ -1,7 +1,7 @@
 { "icon": "images/ollamaIcon.png",
   "name": "ollama-commit-generator",
   "displayName": "LlamaCommit",
-  "description": "Generate Git commit messages from Ollama, OpenAI-compatible endpoints, OpenAI, or Cohere directly from Source Control.",
+  "description": "Generate Git commit messages from Ollama, OpenAI-compatible endpoints, or Cohere directly from Source Control.",
   "version": "0.0.1",
   "publisher": "local",
   "repository": {

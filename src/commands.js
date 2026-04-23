@@ -1,7 +1,13 @@
 const vscode = require('vscode');
 const { getProvider, getProviders } = require('./providers');
 const { findGitRepository, getDiffText } = require('./git');
-const { buildCommitRequest, normalizeCommitMessage, fillGitCommitInputBox, showCommitDocument } = require('./commit');
+const {
+  buildCommitRequest,
+  getCommitTemplatePath,
+  normalizeCommitMessage,
+  fillGitCommitInputBox,
+  showCommitDocument
+} = require('./commit');
 const {
   deleteProviderSecret,
   getActiveProviderId,
@@ -38,7 +44,7 @@ function getProviderSummary(provider, config, status) {
   }
 
   if (provider.supportsApiKey) {
-    details.push(status.hasApiKey ? 'API key saved' : 'no API key');
+    details.push(status.hasApiKey ? 'API key available' : 'no API key');
   }
 
   return details.join(' | ') || provider.description;
@@ -186,6 +192,11 @@ async function clearApiKey(context, providerId) {
   vscode.window.showInformationMessage(`Cleared the stored API key for ${provider.label}.`);
 }
 
+async function openCommitInstructionsEditor() {
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(getCommitTemplatePath()));
+  await vscode.window.showTextDocument(document, { preview: false });
+}
+
 async function setBaseUrl(context, providerId) {
   const provider = getProviderOrThrow(providerId);
   const config = getStoredProviderConfig(context, providerId);
@@ -231,92 +242,105 @@ async function setExecutablePath(context, providerId) {
 }
 
 async function configureProvider(context) {
-  const activeProviderId = getActiveProviderId(context);
-  const activeProvider = getProviderOrThrow(activeProviderId);
-  const activeConfig = await getResolvedProviderConfig(context, activeProviderId);
-  const activeHasApiKey = activeProvider.supportsApiKey ? await hasProviderSecret(context, activeProviderId) : false;
+  while (true) {
+    const activeProviderId = getActiveProviderId(context);
+    const activeProvider = getProviderOrThrow(activeProviderId);
+    const activeConfig = await getResolvedProviderConfig(context, activeProviderId);
+    const activeHasApiKey = activeProvider.supportsApiKey ? await hasProviderSecret(context, activeProviderId) : false;
 
-  const actions = [
-    {
-      label: 'Switch active provider',
-      description: activeProvider.label,
-      action: 'switch-provider'
-    },
-    {
-      label: `Choose model for ${activeProvider.label}`,
-      description: activeConfig.model || 'No model selected',
-      action: 'choose-model'
-    },
-    {
-      label: `Enter model manually for ${activeProvider.label}`,
-      description: activeConfig.model || 'No model selected',
-      action: 'manual-model'
-    }
-  ];
-
-  if (activeProvider.supportsApiKey) {
-    actions.push({
-      label: `Set API key for ${activeProvider.label}`,
-      description: activeHasApiKey ? 'API key already saved' : 'No API key saved',
-      action: 'set-api-key'
-    });
-    actions.push({
-      label: `Clear API key for ${activeProvider.label}`,
-      description: activeHasApiKey ? 'Remove the saved API key' : 'Nothing stored yet',
-      action: 'clear-api-key'
-    });
-  }
-
-  if (activeProvider.supportsBaseUrl) {
-    actions.push({
-      label: `Set base URL for ${activeProvider.label}`,
-      description: activeConfig.baseUrl || 'No base URL set',
-      action: 'set-base-url'
-    });
-  }
-
-  if (activeProvider.supportsExecutablePath) {
-    actions.push({
-      label: `Set executable path for ${activeProvider.label}`,
-      description: activeConfig.executablePath || 'Using PATH lookup',
-      action: 'set-executable-path'
-    });
-  }
-
-  const selection = await vscode.window.showQuickPick(actions, {
-    placeHolder: `Configure ${activeProvider.label} from the gear menu.`
-  });
-
-  if (!selection) {
-    return;
-  }
-
-  switch (selection.action) {
-    case 'switch-provider':
-      if (await switchProvider(context)) {
-        await configureProvider(context);
+    const actions = [
+      {
+        label: 'Close settings',
+        description: 'Dismiss the provider menu.',
+        action: 'close'
+      },
+      {
+        label: 'Switch active provider',
+        description: activeProvider.label,
+        action: 'switch-provider'
+      },
+      {
+        label: `Choose model for ${activeProvider.label}`,
+        description: activeConfig.model || 'No model selected',
+        action: 'choose-model'
+      },
+      {
+        label: `Enter model manually for ${activeProvider.label}`,
+        description: activeConfig.model || 'No model selected',
+        action: 'manual-model'
+      },
+      {
+        label: 'Edit commit instructions',
+        description: 'Open the prompt template file for rewriting the commit rules.',
+        action: 'edit-template'
       }
+    ];
+
+    if (activeProvider.supportsApiKey) {
+      actions.push({
+        label: `Set API key for ${activeProvider.label}`,
+        description: activeHasApiKey ? 'API key currently available' : 'No API key available',
+        action: 'set-api-key'
+      });
+      actions.push({
+        label: `Clear stored API key for ${activeProvider.label}`,
+        description: activeHasApiKey ? 'Remove the saved key from VS Code secret storage' : 'No stored key to clear',
+        action: 'clear-api-key'
+      });
+    }
+
+    if (activeProvider.supportsBaseUrl) {
+      actions.push({
+        label: `Set base URL for ${activeProvider.label}`,
+        description: activeConfig.baseUrl || 'No base URL set',
+        action: 'set-base-url'
+      });
+    }
+
+    if (activeProvider.supportsExecutablePath) {
+      actions.push({
+        label: `Set executable path for ${activeProvider.label}`,
+        description: activeConfig.executablePath || 'Using PATH lookup',
+        action: 'set-executable-path'
+      });
+    }
+
+    const selection = await vscode.window.showQuickPick(actions, {
+      placeHolder: `Configure ${activeProvider.label}. Press Escape or choose Close settings when you are done.`
+    });
+
+    if (!selection || selection.action === 'close') {
       return;
-    case 'choose-model':
-      await chooseModel(context, activeProviderId);
-      return;
-    case 'manual-model':
-      await promptForModelInput(context, activeProviderId);
-      return;
-    case 'set-api-key':
-      await setApiKey(context, activeProviderId);
-      return;
-    case 'clear-api-key':
-      await clearApiKey(context, activeProviderId);
-      return;
-    case 'set-base-url':
-      await setBaseUrl(context, activeProviderId);
-      return;
-    case 'set-executable-path':
-      await setExecutablePath(context, activeProviderId);
-      return;
-    default:
-      return;
+    }
+
+    switch (selection.action) {
+      case 'switch-provider':
+        await switchProvider(context);
+        break;
+      case 'choose-model':
+        await chooseModel(context, activeProviderId);
+        break;
+      case 'manual-model':
+        await promptForModelInput(context, activeProviderId);
+        break;
+      case 'edit-template':
+        await openCommitInstructionsEditor();
+        return;
+      case 'set-api-key':
+        await setApiKey(context, activeProviderId);
+        break;
+      case 'clear-api-key':
+        await clearApiKey(context, activeProviderId);
+        break;
+      case 'set-base-url':
+        await setBaseUrl(context, activeProviderId);
+        break;
+      case 'set-executable-path':
+        await setExecutablePath(context, activeProviderId);
+        break;
+      default:
+        return;
+    }
   }
 }
 

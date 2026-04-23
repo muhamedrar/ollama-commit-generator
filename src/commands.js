@@ -1,62 +1,323 @@
 const vscode = require('vscode');
-const { listOllamaModels, runOllamaModel } = require('./ollama');
+const { getProvider, getProviders } = require('./providers');
 const { findGitRepository, getDiffText } = require('./git');
-const { buildCommitPrompt, normalizeCommitMessage, fillGitCommitInputBox, showCommitDocument } = require('./commit');
+const { buildCommitRequest, normalizeCommitMessage, fillGitCommitInputBox, showCommitDocument } = require('./commit');
+const {
+  deleteProviderSecret,
+  getActiveProviderId,
+  getResolvedProviderConfig,
+  getStoredProviderConfig,
+  hasProviderSecret,
+  setActiveProviderId,
+  storeProviderSecret,
+  updateProviderConfig
+} = require('./state');
 
-const MODEL_STATE_KEY = 'ollamaCommit.selectedModel';
-
-async function chooseModel(context) {
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders || !workspaceFolders.length) {
-    vscode.window.showErrorMessage('Open a workspace folder before choosing an Ollama model.');
-    return;
+function getProviderOrThrow(providerId) {
+  const provider = getProvider(providerId);
+  if (!provider) {
+    throw new Error(`Unknown provider: ${providerId}`);
   }
+
+  return provider;
+}
+
+function getProviderSummary(provider, config, status) {
+  const details = [];
+
+  if (config.model) {
+    details.push(`model: ${config.model}`);
+  }
+
+  if (provider.supportsBaseUrl && config.baseUrl) {
+    details.push(config.baseUrl);
+  }
+
+  if (provider.supportsExecutablePath && config.executablePath) {
+    details.push(`path: ${config.executablePath}`);
+  }
+
+  if (provider.supportsApiKey) {
+    details.push(status.hasApiKey ? 'API key saved' : 'no API key');
+  }
+
+  return details.join(' | ') || provider.description;
+}
+
+async function promptForModelInput(context, providerId) {
+  const provider = getProviderOrThrow(providerId);
+  const config = getStoredProviderConfig(context, providerId);
+  const value = await vscode.window.showInputBox({
+    title: `${provider.label} model`,
+    prompt: `Enter the model name for ${provider.label}.`,
+    value: config.model || '',
+    ignoreFocusOut: true
+  });
+
+  if (value === undefined) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    vscode.window.showWarningMessage('Model name was left empty.');
+    return null;
+  }
+
+  await updateProviderConfig(context, providerId, { model: trimmed });
+  return trimmed;
+}
+
+async function chooseModel(context, providerId = getActiveProviderId(context)) {
+  const provider = getProviderOrThrow(providerId);
+  const config = await getResolvedProviderConfig(context, providerId);
 
   let models;
   try {
     models = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: 'Initializing Ollama and loading models...',
+        title: `Loading models from ${provider.label}...`,
         cancellable: false
       },
-      async () => {
-        return await listOllamaModels();
-      }
+      async () => provider.listModels(config)
     );
   } catch (error) {
-    vscode.window.showErrorMessage(error.message);
-    return;
+    const enterManually = 'Enter model manually';
+    const selection = await vscode.window.showErrorMessage(error.message, enterManually);
+    if (selection === enterManually) {
+      return promptForModelInput(context, providerId);
+    }
+    return null;
   }
 
-  if (!models.length) {
-    vscode.window.showErrorMessage('No Ollama models found.');
-    return;
+  const currentModel = config.model || '';
+  const selection = await vscode.window.showQuickPick(
+    [
+      {
+        label: 'Enter model manually',
+        description: 'Type any model name yourself.',
+        model: '__manual__'
+      },
+      ...models.map(model => ({
+        label: model,
+        description: model === currentModel ? 'Current model' : '',
+        model
+      }))
+    ],
+    {
+      placeHolder: `Select a model for ${provider.label}`,
+      canPickMany: false
+    }
+  );
+
+  if (!selection) {
+    return null;
   }
 
-  const selected = await vscode.window.showQuickPick(models, {
-    placeHolder: 'Select an Ollama model',
-    canPickMany: false
-  });
-
-  if (selected) {
-    await context.globalState.update(MODEL_STATE_KEY, selected);
-    vscode.window.showInformationMessage(`Selected Ollama model: ${selected}`);
+  if (selection.model === '__manual__') {
+    return promptForModelInput(context, providerId);
   }
+
+  await updateProviderConfig(context, providerId, { model: selection.model });
+  vscode.window.showInformationMessage(`Selected model for ${provider.label}: ${selection.model}`);
+  return selection.model;
 }
 
-async function getSelectedModel(context) {
-  let model = context.globalState.get(MODEL_STATE_KEY);
-  if (typeof model === 'string' && model.trim()) {
-    return model.trim();
+async function switchProvider(context) {
+  const activeProviderId = getActiveProviderId(context);
+  const items = await Promise.all(
+    getProviders().map(async provider => {
+      const config = await getResolvedProviderConfig(context, provider.id);
+      const status = {
+        hasApiKey: provider.supportsApiKey ? await hasProviderSecret(context, provider.id) : false
+      };
+
+      return {
+        label: provider.label,
+        description: provider.id === activeProviderId ? 'Active provider' : provider.description,
+        detail: getProviderSummary(provider, config, status),
+        providerId: provider.id
+      };
+    })
+  );
+
+  const selection = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Choose the provider used to generate commit messages.'
+  });
+
+  if (!selection) {
+    return null;
   }
 
-  const models = await listOllamaModels();
-  if (!models.length) {
-    throw new Error('No Ollama models available.');
+  await setActiveProviderId(context, selection.providerId);
+  const provider = getProviderOrThrow(selection.providerId);
+  vscode.window.showInformationMessage(`Active provider set to ${provider.label}.`);
+  return selection.providerId;
+}
+
+async function setApiKey(context, providerId) {
+  const provider = getProviderOrThrow(providerId);
+  const value = await vscode.window.showInputBox({
+    title: `${provider.label} API key`,
+    prompt: `Enter the API key for ${provider.label}. It will be stored in VS Code secret storage.`,
+    password: true,
+    ignoreFocusOut: true
+  });
+
+  if (value === undefined) {
+    return false;
   }
 
-  return models[0];
+  const trimmed = value.trim();
+  if (!trimmed) {
+    vscode.window.showWarningMessage('API key was left empty.');
+    return false;
+  }
+
+  await storeProviderSecret(context, providerId, trimmed);
+  vscode.window.showInformationMessage(`Saved API key for ${provider.label}.`);
+  return true;
+}
+
+async function clearApiKey(context, providerId) {
+  const provider = getProviderOrThrow(providerId);
+  await deleteProviderSecret(context, providerId);
+  vscode.window.showInformationMessage(`Cleared the stored API key for ${provider.label}.`);
+}
+
+async function setBaseUrl(context, providerId) {
+  const provider = getProviderOrThrow(providerId);
+  const config = getStoredProviderConfig(context, providerId);
+  const value = await vscode.window.showInputBox({
+    title: `${provider.label} base URL`,
+    prompt: `Enter the base URL for ${provider.label}.`,
+    value: config.baseUrl || '',
+    ignoreFocusOut: true
+  });
+
+  if (value === undefined) {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    vscode.window.showWarningMessage('Base URL was left empty.');
+    return false;
+  }
+
+  await updateProviderConfig(context, providerId, { baseUrl: trimmed });
+  vscode.window.showInformationMessage(`Updated the base URL for ${provider.label}.`);
+  return true;
+}
+
+async function setExecutablePath(context, providerId) {
+  const provider = getProviderOrThrow(providerId);
+  const config = getStoredProviderConfig(context, providerId);
+  const value = await vscode.window.showInputBox({
+    title: `${provider.label} executable path`,
+    prompt: 'Enter the absolute path to the Ollama executable, or clear it to use PATH.',
+    value: config.executablePath || '',
+    ignoreFocusOut: true
+  });
+
+  if (value === undefined) {
+    return false;
+  }
+
+  await updateProviderConfig(context, providerId, { executablePath: value.trim() });
+  vscode.window.showInformationMessage('Updated the Ollama executable path.');
+  return true;
+}
+
+async function configureProvider(context) {
+  const activeProviderId = getActiveProviderId(context);
+  const activeProvider = getProviderOrThrow(activeProviderId);
+  const activeConfig = await getResolvedProviderConfig(context, activeProviderId);
+  const activeHasApiKey = activeProvider.supportsApiKey ? await hasProviderSecret(context, activeProviderId) : false;
+
+  const actions = [
+    {
+      label: 'Switch active provider',
+      description: activeProvider.label,
+      action: 'switch-provider'
+    },
+    {
+      label: `Choose model for ${activeProvider.label}`,
+      description: activeConfig.model || 'No model selected',
+      action: 'choose-model'
+    },
+    {
+      label: `Enter model manually for ${activeProvider.label}`,
+      description: activeConfig.model || 'No model selected',
+      action: 'manual-model'
+    }
+  ];
+
+  if (activeProvider.supportsApiKey) {
+    actions.push({
+      label: `Set API key for ${activeProvider.label}`,
+      description: activeHasApiKey ? 'API key already saved' : 'No API key saved',
+      action: 'set-api-key'
+    });
+    actions.push({
+      label: `Clear API key for ${activeProvider.label}`,
+      description: activeHasApiKey ? 'Remove the saved API key' : 'Nothing stored yet',
+      action: 'clear-api-key'
+    });
+  }
+
+  if (activeProvider.supportsBaseUrl) {
+    actions.push({
+      label: `Set base URL for ${activeProvider.label}`,
+      description: activeConfig.baseUrl || 'No base URL set',
+      action: 'set-base-url'
+    });
+  }
+
+  if (activeProvider.supportsExecutablePath) {
+    actions.push({
+      label: `Set executable path for ${activeProvider.label}`,
+      description: activeConfig.executablePath || 'Using PATH lookup',
+      action: 'set-executable-path'
+    });
+  }
+
+  const selection = await vscode.window.showQuickPick(actions, {
+    placeHolder: `Configure ${activeProvider.label} from the gear menu.`
+  });
+
+  if (!selection) {
+    return;
+  }
+
+  switch (selection.action) {
+    case 'switch-provider':
+      if (await switchProvider(context)) {
+        await configureProvider(context);
+      }
+      return;
+    case 'choose-model':
+      await chooseModel(context, activeProviderId);
+      return;
+    case 'manual-model':
+      await promptForModelInput(context, activeProviderId);
+      return;
+    case 'set-api-key':
+      await setApiKey(context, activeProviderId);
+      return;
+    case 'clear-api-key':
+      await clearApiKey(context, activeProviderId);
+      return;
+    case 'set-base-url':
+      await setBaseUrl(context, activeProviderId);
+      return;
+    case 'set-executable-path':
+      await setExecutablePath(context, activeProviderId);
+      return;
+    default:
+      return;
+  }
 }
 
 async function generateCommitMessage(context) {
@@ -86,32 +347,50 @@ async function generateCommitMessage(context) {
     return;
   }
 
-  let model;
-  try {
-    model = await getSelectedModel(context);
-  } catch (error) {
-    const choose = 'Choose model';
-    const selection = await vscode.window.showErrorMessage(error.message, choose);
-    if (selection === choose) {
-      await chooseModel(context);
+  const providerId = getActiveProviderId(context);
+  const provider = getProviderOrThrow(providerId);
+  let config = await getResolvedProviderConfig(context, providerId);
+
+  if (provider.requiresApiKey && !config.apiKey) {
+    const addApiKey = 'Add API key';
+    const selection = await vscode.window.showErrorMessage(
+      `${provider.label} needs an API key before it can generate commit messages.`,
+      addApiKey
+    );
+
+    if (selection === addApiKey) {
+      const saved = await setApiKey(context, providerId);
+      if (!saved) {
+        return;
+      }
+      config = await getResolvedProviderConfig(context, providerId);
+    } else {
+      return;
     }
-    return;
   }
 
-  const prompt = buildCommitPrompt(diffText);
+  if (!config.model) {
+    const selectedModel = await chooseModel(context, providerId);
+    if (!selectedModel) {
+      return;
+    }
+    config = await getResolvedProviderConfig(context, providerId);
+  }
+
+  const prompt = buildCommitRequest(diffText);
   const progressOptions = {
     location: vscode.ProgressLocation.Notification,
-    title: `Generating commit message with ${model}`,
+    title: `Generating commit message with ${provider.label} (${config.model})`,
     cancellable: false
   };
 
   try {
     const commitMessage = await vscode.window.withProgress(progressOptions, async () => {
-      return await runOllamaModel(model, prompt);
+      return provider.generateCommitMessage(config, prompt);
     });
 
     if (!commitMessage || !commitMessage.trim()) {
-      vscode.window.showWarningMessage('Ollama returned an empty response.');
+      vscode.window.showWarningMessage(`${provider.label} returned an empty response.`);
       return;
     }
 
@@ -129,11 +408,12 @@ async function generateCommitMessage(context) {
 
     await showCommitDocument(normalizedMessage);
   } catch (error) {
-    vscode.window.showErrorMessage(`Ollama generation failed: ${error.message}`);
+    vscode.window.showErrorMessage(`${provider.label} generation failed: ${error.message}`);
   }
 }
 
 module.exports = {
   chooseModel,
+  configureProvider,
   generateCommitMessage
 };

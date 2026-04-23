@@ -1,10 +1,15 @@
-# Ollama Commit Generator
+# LlamaCommit
 
-An example VS Code extension that adds a Source Control title action for generating commit messages with local Ollama models.
+A VS Code extension that adds Source Control actions for generating commit messages with:
+
+- Local Ollama through the CLI
+- Ollama or any other OpenAI-compatible `/v1` endpoint
+- OpenAI models
+- Cohere models
 
 ## Installation
 
-### Installing Ollama via Docker
+### Ollama via Docker (optional)
 
 1. Ensure Docker is installed on your system. If not, download and install Docker from [docker.com](https://www.docker.com/).
 
@@ -25,26 +30,38 @@ An example VS Code extension that adds a Source Control title action for generat
 
 ### Configuring the Extension
 
-1. In VS Code, open the settings (Ctrl+,).
-2. Search for "Ollama Commit".
-3. Set `ollamaCommit.endpoint` to `http://localhost:11434` (the default Ollama endpoint).
-4. Optionally, set `ollamaCommit.ollamaPath` if using local CLI, but for Docker setup, the endpoint is sufficient.
+1. Open a Git workspace in VS Code.
+2. Open the Source Control view.
+3. Click the gear button in the SCM title bar.
+4. Choose the active provider.
+5. Add the provider API key if needed.
+6. Choose a model from the provider, or type one manually.
+
+For Ollama running with OpenAI compatibility, use the `Ollama / OpenAI-Compatible` provider and point it at `http://localhost:11434/v1`.
 
 ## Features
 
-- Adds a button in the SCM title bar for generating commit messages.
-- Adds a second title action to choose the local Ollama model.
-- Uses local `ollama` CLI or a configured Ollama HTTP endpoint to list models and generate text.
+- Source Control generate button for commit messages.
+- Gear button for provider switching and provider-specific setup.
+- Secure secret storage for OpenAI and Cohere API keys.
+- Dynamic model selection per provider.
+- Clean provider architecture so new providers can be added with minimal changes.
 
 ## Usage
 
 1. Open a Git workspace.
 2. Click the `Generate Commit Message` button in the Source Control title bar.
-3. If needed, use `Choose Ollama Model` first to pick a model.
+3. If needed, use the gear button to configure the active provider, key, base URL, or model.
 
 ## Requirements
 
-- `ollama` must be installed and available on your PATH, or configured via `ollamaCommit.ollamaPath`.
-- If Ollama is running inside a container, set `ollamaCommit.endpoint` to the container's HTTP endpoint (for example `http://localhost:11434`).
-- For authenticated endpoints, set `ollamaCommit.apiKey` or `OLLAMA_API_KEY`.
+- For `Ollama CLI`, `ollama` must be installed and available on your PATH, or you must set its executable path from the gear menu.
+- For `Ollama / OpenAI-Compatible`, point the base URL to a compatible `/v1` endpoint such as `http://localhost:11434/v1`.
+- For `OpenAI`, set an OpenAI API key.
+- For `Cohere`, set a Cohere API key.
 - The workspace must be inside a Git repository.
+
+## Notes
+
+- Existing legacy settings such as `ollamaCommit.endpoint`, `ollamaCommit.apiKey`, and `ollamaCommit.ollamaPath` are still read as fallbacks for migration.
+- Provider API keys are stored in VS Code Secret Storage instead of plain settings.

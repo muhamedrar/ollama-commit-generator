@@ -1,7 +1,7 @@
 { "icon": "images/ollamaIcon.png",
   "name": "ollama-commit-generator",
   "displayName": "LlamaCommit",
-  "description": "Add a Source Control button and model picker for local or endpoint-based Ollama commit message generation.",
+  "description": "Generate Git commit messages from Ollama, OpenAI-compatible endpoints, OpenAI, or Cohere directly from Source Control.",
   "version": "0.0.1",
   "publisher": "local",
   "repository": {
@@ -26,7 +26,7 @@
       {
         "command": "ollamaCommit.generateCommitMessage",
         "title": "Generate Commit Message",
-        "category": "Ollama Commit Generator",
+        "category": "LlamaCommit",
         "icon": {
           "light": "images/magic-wand.png",
           "dark": "images/magic-wand-dark.png"
@@ -34,8 +34,17 @@
       },
       {
         "command": "ollamaCommit.chooseModel",
-        "title": "Choose Ollama Model",
-        "category": "Ollama Commit Generator"
+        "title": "Choose AI Model",
+        "category": "LlamaCommit"
+      },
+      {
+        "command": "ollamaCommit.configureProvider",
+        "title": "AI Settings",
+        "category": "LlamaCommit",
+        "icon": {
+          "light": "images/settings-light.svg",
+          "dark": "images/settings-dark.svg"
+        }
       }
     ],
     "menus": {
@@ -45,34 +54,10 @@
           "group": "navigation"
         },
         {
-          "command": "ollamaCommit.chooseModel",
+          "command": "ollamaCommit.configureProvider",
           "group": "navigation"
         }
       ]
-    },
-    "configuration": {
-      "type": "object",
-      "title": "Ollama Commit Generator",
-      "properties": {
-        "ollamaCommit.ollamaPath": {
-          "type": "string",
-          "default": "",
-          "description": "Absolute path to the Ollama CLI executable. If empty, the extension will search PATH.",
-          "scope": "machine"
-        },
-        "ollamaCommit.endpoint": {
-          "type": "string",
-          "default": "http://localhost:11434",
-          "description": "URL of the Ollama HTTP endpoint (for containerized Ollama). If set, the extension will call the endpoint instead of the local CLI.",
-          "scope": "machine"
-        },
-        "ollamaCommit.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Optional Bearer token for the Ollama endpoint.",
-          "scope": "machine"
-        }
-      }
     }
   }
 }

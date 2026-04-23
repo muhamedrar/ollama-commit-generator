@@ -1,24 +1,26 @@
 const vscode = require('vscode');
 
-function buildCommitPrompt(diffText) {
-  return `You are ONLY a commit message generator.
+function buildCommitRequest(diffText) {
+  const systemInstruction = [
+    'You are a Git commit message generator.',
+    'Return exactly one concise commit subject line.',
+    'Do not include quotes, code fences, explanations, bullets, or extra lines.',
+    'Use the format: type: short message.',
+    'Choose the most accurate conventional type from the diff.'
+  ].join(' ');
 
-CRITICAL RULE:
-Return ONLY ONE LINE.
-No explanations. No analysis. No extra text. No formatting.
+  const userPrompt = [
+    'Write a commit message for this Git diff.',
+    '',
+    'Diff:',
+    diffText
+  ].join('\n');
 
-If you output anything else, it is wrong.
-
-Write a Git commit message from the diff.
-
-Format:
-type: short message
-
-DIFF:
-{{diff}}
-
-Diff:
-${diffText}`;
+  return {
+    systemInstruction,
+    userPrompt,
+    combinedPrompt: `${systemInstruction}\n\n${userPrompt}`
+  };
 }
 
 function normalizeCommitMessage(commitMessage) {
@@ -115,7 +117,7 @@ async function showCommitDocument(commitMessage) {
 }
 
 module.exports = {
-  buildCommitPrompt,
+  buildCommitRequest,
   normalizeCommitMessage,
   fillGitCommitInputBox,
   showCommitDocument

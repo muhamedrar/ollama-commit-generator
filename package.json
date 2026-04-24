@@ -2,8 +2,20 @@
   "name": "kodecommit",
   "displayName": "KodeCommit",
   "description": "Generate Git commit messages from Source Control with OpenAI. KODE stands for Keep Our Diffs Explained.",
-  "version": "0.2.0",
+  "version": "1.0.0",
+  "license": "MIT",
   "publisher": "local",
+  "keywords": [
+    "git",
+    "commit",
+    "commit-message",
+    "source-control",
+    "vscode",
+    "openai",
+    "cohere",
+    "ollama",
+    "ai"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/user/KodeCommit"

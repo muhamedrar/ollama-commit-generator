@@ -132,8 +132,10 @@ async function chooseModel(context, providerId = getActiveProviderId(context)) {
 
 async function switchProvider(context) {
   const activeProviderId = getActiveProviderId(context);
+  const providers = getProviders();
+  const onlyOneProvider = providers.length === 1;
   const items = await Promise.all(
-    getProviders().map(async provider => {
+    providers.map(async provider => {
       const config = await getResolvedProviderConfig(context, provider.id);
       const status = {
         hasApiKey: provider.supportsApiKey ? await hasProviderSecret(context, provider.id) : false
@@ -141,7 +143,12 @@ async function switchProvider(context) {
 
       return {
         label: provider.label,
-        description: provider.id === activeProviderId ? 'Active provider' : provider.description,
+        description:
+          provider.id === activeProviderId
+            ? onlyOneProvider
+              ? 'Active provider and the only available option right now'
+              : 'Active provider'
+            : provider.description,
         detail: getProviderSummary(provider, config, status),
         providerId: provider.id
       };
@@ -149,7 +156,9 @@ async function switchProvider(context) {
   );
 
   const selection = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Choose the provider used to generate commit messages.'
+    placeHolder: onlyOneProvider
+      ? 'OpenAI is the only available provider right now. This menu stays ready for future providers.'
+      : 'Choose the provider used to generate commit messages.'
   });
 
   if (!selection) {
@@ -227,7 +236,7 @@ async function setExecutablePath(context, providerId) {
   const config = getStoredProviderConfig(context, providerId);
   const value = await vscode.window.showInputBox({
     title: `${provider.label} executable path`,
-    prompt: 'Enter the absolute path to the Ollama executable, or clear it to use PATH.',
+    prompt: `Enter the absolute path to the ${provider.label} executable, or clear it to use PATH.`,
     value: config.executablePath || '',
     ignoreFocusOut: true
   });
@@ -237,7 +246,7 @@ async function setExecutablePath(context, providerId) {
   }
 
   await updateProviderConfig(context, providerId, { executablePath: value.trim() });
-  vscode.window.showInformationMessage('Updated the Ollama executable path.');
+  vscode.window.showInformationMessage(`Updated the executable path for ${provider.label}.`);
   return true;
 }
 
@@ -256,7 +265,10 @@ async function configureProvider(context) {
       },
       {
         label: 'Switch active provider',
-        description: activeProvider.label,
+        description:
+          getProviders().length === 1
+            ? `${activeProvider.label} is the only available provider right now`
+            : activeProvider.label,
         action: 'switch-provider'
       },
       {

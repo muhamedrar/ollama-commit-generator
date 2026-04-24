@@ -63,6 +63,12 @@ function createOpenAICompatibleProvider(definition) {
     id: definition.id,
     label: definition.label,
     description: definition.description,
+    defaultConfig: { ...(definition.defaultConfig || {}) },
+    legacyConfigIds: Array.isArray(definition.legacyConfigIds) ? definition.legacyConfigIds.slice() : [],
+    legacySecretIds: Array.isArray(definition.legacySecretIds) ? definition.legacySecretIds.slice() : [],
+    apiKeyEnvironmentVariables: Array.isArray(definition.apiKeyEnvironmentVariables)
+      ? definition.apiKeyEnvironmentVariables.slice()
+      : [],
     supportsModelListing: true,
     supportsManualModelEntry: true,
     supportsApiKey: true,

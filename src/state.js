@@ -1,46 +1,52 @@
 const vscode = require('vscode');
+const { getProvider, getProviders } = require('./providers');
 
-const PROVIDER_STATE_KEY = 'ollamaCommit.providerState';
+const PROVIDER_STATE_KEY = 'kodeCommit.providerState';
+const LEGACY_PROVIDER_STATE_KEY = 'ollamaCommit.providerState';
+const MODEL_STATE_KEY = 'kodeCommit.selectedModel';
 const LEGACY_MODEL_STATE_KEY = 'ollamaCommit.selectedModel';
+const SETTINGS_NAMESPACE = 'kodeCommit';
+const LEGACY_SETTINGS_NAMESPACE = 'ollamaCommit';
 
 const PROVIDER_IDS = {
-  OLLAMA_CLI: 'ollama-cli',
-  OPENAI_COMPATIBLE: 'openai-compatible',
-  COHERE: 'cohere'
+  OPENAI: 'openai'
 };
 
-const DEFAULT_STATE = {
-  activeProviderId: PROVIDER_IDS.OLLAMA_CLI,
-  providers: {
-    [PROVIDER_IDS.OLLAMA_CLI]: {
-      executablePath: '',
-      model: ''
-    },
-    [PROVIDER_IDS.OPENAI_COMPATIBLE]: {
-      baseUrl: 'http://localhost:11434/v1',
-      model: ''
-    },
-    [PROVIDER_IDS.COHERE]: {
-      baseUrl: 'https://api.cohere.com',
-      model: ''
-    }
-  }
+const PROVIDER_ID_ALIASES = {
+  'openai-compatible': PROVIDER_IDS.OPENAI
 };
 
-function cloneDefaultState() {
-  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+const REGISTERED_PROVIDERS = getProviders();
+const FALLBACK_PROVIDER_ID = REGISTERED_PROVIDERS[0]?.id || PROVIDER_IDS.OPENAI;
+
+function cloneConfig(value) {
+  return JSON.parse(JSON.stringify(value || {}));
 }
 
-function getSecretStorageKey(providerId) {
-  return `ollamaCommit.secret.${providerId}.apiKey`;
+function createDefaultState() {
+  return {
+    activeProviderId: FALLBACK_PROVIDER_ID,
+    providers: Object.fromEntries(
+      REGISTERED_PROVIDERS.map(provider => [provider.id, cloneConfig(provider.defaultConfig)])
+    )
+  };
+}
+
+const DEFAULT_STATE = createDefaultState();
+
+function cloneDefaultState() {
+  return createDefaultState();
+}
+
+function getSecretStorageKey(providerId, namespace = SETTINGS_NAMESPACE) {
+  return `${namespace}.secret.${providerId}.apiKey`;
 }
 
 function getLegacySettings() {
-  const configuration = vscode.workspace.getConfiguration('ollamaCommit');
+  const configuration = vscode.workspace.getConfiguration(SETTINGS_NAMESPACE);
+  const legacyConfiguration = vscode.workspace.getConfiguration(LEGACY_SETTINGS_NAMESPACE);
   return {
-    ollamaPath: String(configuration.get('ollamaPath') || '').trim(),
-    endpoint: String(configuration.get('endpoint') || '').trim(),
-    apiKey: String(configuration.get('apiKey') || process.env.OLLAMA_API_KEY || '').trim()
+    apiKey: String(configuration.get('apiKey') || legacyConfiguration.get('apiKey') || '').trim()
   };
 }
 
@@ -55,69 +61,54 @@ function normalizeBaseUrl(baseUrl, { ensureV1 = false, fallback = '' } = {}) {
   return normalized;
 }
 
+function normalizeProviderId(providerId) {
+  const normalizedProviderId = PROVIDER_ID_ALIASES[String(providerId || '').trim()] || String(providerId || '').trim();
+  return getProvider(normalizedProviderId)?.id || FALLBACK_PROVIDER_ID;
+}
+
+function getProviderConfigIds(provider) {
+  return [provider.id, ...(provider.legacyConfigIds || [])];
+}
+
+function getProviderSecretIds(provider) {
+  return [provider.id, ...(provider.legacySecretIds || [])];
+}
+
+function buildProviderConfig(provider, storedProviders, legacyModel) {
+  const mergedConfig = cloneConfig(provider.defaultConfig);
+
+  for (const configId of getProviderConfigIds(provider)) {
+    Object.assign(mergedConfig, storedProviders[configId] || {});
+  }
+
+  if (provider.id === PROVIDER_IDS.OPENAI) {
+    mergedConfig.baseUrl = normalizeBaseUrl(mergedConfig.baseUrl, {
+      ensureV1: true,
+      fallback: provider.defaultConfig?.baseUrl || ''
+    });
+    mergedConfig.model = String(mergedConfig.model || legacyModel || '').trim();
+  }
+
+  return mergedConfig;
+}
+
 function getProviderState(context) {
-  const storedState = context.globalState.get(PROVIDER_STATE_KEY) || {};
+  const storedState =
+    context.globalState.get(PROVIDER_STATE_KEY) ||
+    context.globalState.get(LEGACY_PROVIDER_STATE_KEY) ||
+    {};
   const mergedState = cloneDefaultState();
-  const legacySettings = getLegacySettings();
-  const legacyModel = String(context.globalState.get(LEGACY_MODEL_STATE_KEY) || '').trim();
+  const legacyModel = String(
+    context.globalState.get(MODEL_STATE_KEY) || context.globalState.get(LEGACY_MODEL_STATE_KEY) || ''
+  ).trim();
   const storedProviders = storedState.providers || {};
-  const legacyOpenAiCompatibleConfig = storedProviders[PROVIDER_IDS.OPENAI_COMPATIBLE] || {};
-  const legacyOpenAiConfig = storedProviders.openai || {};
-  const preferLegacyOpenAi = storedState.activeProviderId === 'openai';
 
-  mergedState.activeProviderId =
-    storedState.activeProviderId === 'openai' ? PROVIDER_IDS.OPENAI_COMPATIBLE : storedState.activeProviderId || mergedState.activeProviderId;
-  mergedState.providers = {
-    ...mergedState.providers,
-    ...storedProviders
-  };
-
-  mergedState.providers[PROVIDER_IDS.OLLAMA_CLI] = {
-    ...DEFAULT_STATE.providers[PROVIDER_IDS.OLLAMA_CLI],
-    ...storedProviders[PROVIDER_IDS.OLLAMA_CLI],
-    executablePath:
-      String(
-        (storedProviders[PROVIDER_IDS.OLLAMA_CLI] || {}).executablePath ||
-          legacySettings.ollamaPath ||
-          ''
-      ).trim(),
-    model:
-      String(
-        (storedProviders[PROVIDER_IDS.OLLAMA_CLI] || {}).model ||
-          legacyModel ||
-          ''
-      ).trim()
-  };
-
-  mergedState.providers[PROVIDER_IDS.OPENAI_COMPATIBLE] = {
-    ...DEFAULT_STATE.providers[PROVIDER_IDS.OPENAI_COMPATIBLE],
-    ...legacyOpenAiCompatibleConfig,
-    baseUrl: normalizeBaseUrl(
-      legacyOpenAiCompatibleConfig.baseUrl ||
-        (preferLegacyOpenAi ? legacyOpenAiConfig.baseUrl : '') ||
-        legacySettings.endpoint ||
-        legacyOpenAiConfig.baseUrl,
-      {
-        ensureV1: true,
-        fallback: DEFAULT_STATE.providers[PROVIDER_IDS.OPENAI_COMPATIBLE].baseUrl
-      }
-    ),
-    model: String(
-      legacyOpenAiCompatibleConfig.model || (preferLegacyOpenAi ? legacyOpenAiConfig.model : '') || legacyOpenAiConfig.model || ''
-    ).trim()
-  };
-
-  mergedState.providers[PROVIDER_IDS.COHERE] = {
-    ...DEFAULT_STATE.providers[PROVIDER_IDS.COHERE],
-    ...storedProviders[PROVIDER_IDS.COHERE],
-    baseUrl: normalizeBaseUrl(
-      (storedProviders[PROVIDER_IDS.COHERE] || {}).baseUrl,
-      {
-        fallback: DEFAULT_STATE.providers[PROVIDER_IDS.COHERE].baseUrl
-      }
-    ),
-    model: String((storedProviders[PROVIDER_IDS.COHERE] || {}).model || '').trim()
-  };
+  mergedState.activeProviderId = normalizeProviderId(
+    storedState.activeProviderId || mergedState.activeProviderId
+  );
+  mergedState.providers = Object.fromEntries(
+    REGISTERED_PROVIDERS.map(provider => [provider.id, buildProviderConfig(provider, storedProviders, legacyModel)])
+  );
 
   return mergedState;
 }
@@ -132,57 +123,74 @@ function getActiveProviderId(context) {
 
 async function setActiveProviderId(context, providerId) {
   const nextState = getProviderState(context);
-  nextState.activeProviderId = providerId;
+  nextState.activeProviderId = normalizeProviderId(providerId);
   await saveProviderState(context, nextState);
 }
 
 function getStoredProviderConfig(context, providerId) {
   const state = getProviderState(context);
+  const normalizedProviderId = normalizeProviderId(providerId);
   return {
-    ...(state.providers[providerId] || {})
+    ...(state.providers[normalizedProviderId] || {})
   };
 }
 
 async function updateProviderConfig(context, providerId, updates) {
   const nextState = getProviderState(context);
-  nextState.providers[providerId] = {
-    ...(nextState.providers[providerId] || {}),
+  const normalizedProviderId = normalizeProviderId(providerId);
+  nextState.providers[normalizedProviderId] = {
+    ...(nextState.providers[normalizedProviderId] || {}),
     ...updates
   };
   await saveProviderState(context, nextState);
 }
 
 async function getProviderSecret(context, providerId) {
-  const storedSecret = await context.secrets.get(getSecretStorageKey(providerId));
-  if (storedSecret && storedSecret.trim()) {
-    return storedSecret.trim();
+  const provider = getProvider(normalizeProviderId(providerId));
+  if (!provider) {
+    return '';
   }
 
-  if (providerId === PROVIDER_IDS.OPENAI_COMPATIBLE) {
-    const legacyOpenAiSecret = await context.secrets.get(getSecretStorageKey('openai'));
-    if (legacyOpenAiSecret && legacyOpenAiSecret.trim()) {
-      return legacyOpenAiSecret.trim();
+  for (const secretId of getProviderSecretIds(provider)) {
+    const storedSecret = await context.secrets.get(getSecretStorageKey(secretId));
+    if (storedSecret && storedSecret.trim()) {
+      return storedSecret.trim();
     }
 
-    return String(process.env.OPENAI_API_KEY || getLegacySettings().apiKey || '').trim();
+    const legacyStoredSecret = await context.secrets.get(getSecretStorageKey(secretId, LEGACY_SETTINGS_NAMESPACE));
+    if (legacyStoredSecret && legacyStoredSecret.trim()) {
+      return legacyStoredSecret.trim();
+    }
   }
 
-  if (providerId === PROVIDER_IDS.COHERE) {
-    return String(process.env.COHERE_API_KEY || '').trim();
+  for (const envVarName of provider.apiKeyEnvironmentVariables || []) {
+    const environmentSecret = String(process.env[envVarName] || '').trim();
+    if (environmentSecret) {
+      return environmentSecret;
+    }
+  }
+
+  if (provider.id === PROVIDER_IDS.OPENAI) {
+    return getLegacySettings().apiKey;
   }
 
   return '';
 }
 
 async function storeProviderSecret(context, providerId, value) {
-  await context.secrets.store(getSecretStorageKey(providerId), value.trim());
+  const normalizedProviderId = normalizeProviderId(providerId);
+  await context.secrets.store(getSecretStorageKey(normalizedProviderId), value.trim());
 }
 
 async function deleteProviderSecret(context, providerId) {
-  await context.secrets.delete(getSecretStorageKey(providerId));
+  const provider = getProvider(normalizeProviderId(providerId));
+  if (!provider) {
+    return;
+  }
 
-  if (providerId === PROVIDER_IDS.OPENAI_COMPATIBLE) {
-    await context.secrets.delete(getSecretStorageKey('openai'));
+  for (const secretId of new Set(getProviderSecretIds(provider))) {
+    await context.secrets.delete(getSecretStorageKey(secretId));
+    await context.secrets.delete(getSecretStorageKey(secretId, LEGACY_SETTINGS_NAMESPACE));
   }
 }
 

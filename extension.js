@@ -3,9 +3,9 @@ const { chooseModel, generateCommitMessage, configureProvider } = require('./src
 
 function activate(context) {
   context.subscriptions.push(
-    vscode.commands.registerCommand('ollamaCommit.chooseModel', () => chooseModel(context)),
-    vscode.commands.registerCommand('ollamaCommit.generateCommitMessage', () => generateCommitMessage(context)),
-    vscode.commands.registerCommand('ollamaCommit.configureProvider', () => configureProvider(context))
+    vscode.commands.registerCommand('kodeCommit.chooseModel', () => chooseModel(context)),
+    vscode.commands.registerCommand('kodeCommit.generateCommitMessage', () => generateCommitMessage(context)),
+    vscode.commands.registerCommand('kodeCommit.configureProvider', () => configureProvider(context))
   );
 }
 

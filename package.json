@@ -1,15 +1,15 @@
 { "icon": "images/ollamaIcon.png",
-  "name": "ollama-commit-generator",
-  "displayName": "LlamaCommit",
-  "description": "Generate Git commit messages from Ollama, OpenAI-compatible endpoints, or Cohere directly from Source Control.",
-  "version": "0.0.1",
+  "name": "kodecommit",
+  "displayName": "KodeCommit",
+  "description": "Generate Git commit messages from Source Control with OpenAI. KODE stands for Keep Our Diffs Explained.",
+  "version": "0.2.0",
   "publisher": "local",
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/ollama-commit-generator"
+    "url": "https://github.com/user/KodeCommit"
   },
   "scripts": {
-    "package-vsix": "yes | npx @vscode/vsce package --allow-star-activation"
+    "package-vsix": "bash ./package-vsix.sh"
   },
   "engines": {
     "vscode": "^1.80.0"
@@ -24,23 +24,23 @@
   "contributes": {
     "commands": [
       {
-        "command": "ollamaCommit.generateCommitMessage",
+        "command": "kodeCommit.generateCommitMessage",
         "title": "Generate Commit Message",
-        "category": "LlamaCommit",
+        "category": "KodeCommit",
         "icon": {
           "light": "images/magic-wand.png",
           "dark": "images/magic-wand-dark2.png"
         }
       },
       {
-        "command": "ollamaCommit.chooseModel",
+        "command": "kodeCommit.chooseModel",
         "title": "Choose AI Model",
-        "category": "LlamaCommit"
+        "category": "KodeCommit"
       },
       {
-        "command": "ollamaCommit.configureProvider",
+        "command": "kodeCommit.configureProvider",
         "title": "AI Settings",
-        "category": "LlamaCommit",
+        "category": "KodeCommit",
         "icon": {
           "light": "images/settings-light.svg",
           "dark": "images/settings-dark.png"
@@ -50,11 +50,11 @@
     "menus": {
       "scm/title": [
         {
-          "command": "ollamaCommit.generateCommitMessage",
+          "command": "kodeCommit.generateCommitMessage",
           "group": "navigation"
         },
         {
-          "command": "ollamaCommit.configureProvider",
+          "command": "kodeCommit.configureProvider",
           "group": "navigation"
         }
       ]

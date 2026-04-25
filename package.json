@@ -1,6 +1,6 @@
 { "icon": "images/ollamaIcon.png",
-  "name": "kodecommit",
-  "displayName": "KodeCommit",
+  "name": "kodecommit-ai",
+  "displayName": "KodeCommit – AI Commits",
   "description": "Generate Git commit messages from Source Control with OpenAI. KODE stands for Keep Our Diffs Explained.",
   "version": "1.0.0",
   "license": "MIT",
@@ -18,7 +18,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/KodeCommit"
+    "url": "https://github.com/muhamedrar/ollama-commit-generator.git"
   },
   "scripts": {
     "package-vsix": "bash ./package-vsix.sh"

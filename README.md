@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="images/kodeCommit.gif" alt="KodeCommit demo" />
+  <img src="https://raw.githubusercontent.com/muhamedrar/ollama-commit-generator/main/images/kodeCommit.gif" alt="KodeCommit demo" />
 </p>
 
 KodeCommit is a VS Code extension that generates Git commit messages from the Source Control view. KODE stands for Keep Our Diffs Explained.

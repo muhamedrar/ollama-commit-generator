@@ -4,7 +4,7 @@
   "description": "Generate Git commit messages from Source Control with OpenAI. KODE stands for Keep Our Diffs Explained.",
   "version": "1.0.0",
   "license": "MIT",
-  "publisher": "local",
+  "publisher": "muhamedrar",
   "keywords": [
     "git",
     "commit",
@@ -31,7 +31,7 @@
   ],
   "main": "extension.js",
   "categories": [
-    "Source Control"
+    "SCM Providers"
   ],
   "contributes": {
     "commands": [
